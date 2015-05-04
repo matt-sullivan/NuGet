@@ -590,7 +590,7 @@ namespace NuGet.Commands
             // Reduce the set of packages we want to include as dependencies to the minimal set.
             // Normally, packages.config has the full closure included, we only add top level
             // packages, i.e. packages with in-degree 0
-            foreach (var package in GetMinimumSet(packages))
+            foreach (var package in GetMinimumSet(packagesAndDependencies.Values))
             {
                 // Don't add duplicate dependencies
                 if (dependencies.ContainsKey(package.Id))
@@ -660,7 +660,7 @@ namespace NuGet.Commands
             return packageReference.VersionConstraint ?? defaultVersionConstraint;
         }
 
-        private IEnumerable<IPackage> GetMinimumSet(List<IPackage> packages)
+        private IEnumerable<IPackage> GetMinimumSet(IEnumerable<Tuple<IPackage, PackageDependency>> packages)
         {
             return new Walker(packages, TargetFramework).GetMinimalSet();
         }
@@ -975,13 +975,13 @@ namespace NuGet.Commands
         private class Walker : PackageWalker
         {
             private readonly IPackageRepository _repository;
-            private readonly List<IPackage> _packages;
+            private readonly List<Tuple<IPackage, PackageDependency>> _packages;
 
-            public Walker(List<IPackage> packages, FrameworkName targetFramework) :
+            public Walker(IEnumerable<Tuple<IPackage, PackageDependency>> packages, FrameworkName targetFramework) :
                 base(targetFramework)
             {
-                _packages = packages;
-                _repository = new ReadOnlyPackageRepository(packages.ToList());
+                _packages = packages.ToList();
+                _repository = new ReadOnlyPackageRepository(_packages.Select(p => p.Item1).ToList());
             }
 
             protected override bool SkipDependencyResolveError
@@ -999,10 +999,34 @@ namespace NuGet.Commands
                 return _repository.ResolveDependency(dependency, allowPrereleaseVersions: false, preferListedPackages: false);
             }
 
-            protected override bool OnAfterResolveDependency(IPackage package, IPackage dependency)
+            /// <summary>
+            /// For each dependency between packages this project depends on check if the nested dependency sufficiently
+            /// specifies the project dependency and if it does remove it from the dependencies of the package being built.
+            /// </summary>
+            /// <param name="package">The dependency package whose dependencies are being tested</param>
+            /// <param name="packageDependency">The nested dependency that was resolved</param>
+            /// <param name="resolvedDependency">The resolved package</param>
+            protected override bool OnAfterResolveDependency(IPackage package, PackageDependency packageDependency, IPackage resolvedDependency)
             {
-                _packages.Remove(dependency);
-                return base.OnAfterResolveDependency(package, dependency);
+                // _packages begins as the full list of packages this project depends on
+                _packages.RemoveAll(p => p.Item1 == resolvedDependency && NestedPackageDependencyCoversProjectDependency(packageDependency, p.Item2));
+                return base.OnAfterResolveDependency(package, packageDependency, resolvedDependency);
+            }
+
+            /// <summary>
+            /// Remove items from this project's list of dependencies if a nested package dependency has the same
+            /// minimum version spec.
+            /// </summary>
+            /// <remarks>
+            /// It would be more correct to check the version was exactly the same, but the proposed project
+            /// dependencies only ever specify minimum versions, so any nested dependency with a maximum version
+            /// would never be removed. E.g. something like Asp.Net would always include the full closure of dependency
+            /// packages.
+            /// </remarks>
+            private static bool NestedPackageDependencyCoversProjectDependency(PackageDependency nestedPackageDependency, PackageDependency projectDependency)
+            {
+                return projectDependency.VersionSpec.IsMinInclusive == nestedPackageDependency.VersionSpec.IsMinInclusive
+                       && projectDependency.VersionSpec.MinVersion == nestedPackageDependency.VersionSpec.MinVersion;
             }
 
             public IEnumerable<IPackage> GetMinimalSet()
@@ -1011,7 +1035,7 @@ namespace NuGet.Commands
                 {
                     Walk(package);
                 }
-                return _packages;
+                return _packages.Select(p => p.Item1);
             }
         }
 

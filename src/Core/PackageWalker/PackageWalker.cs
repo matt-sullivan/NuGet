@@ -135,7 +135,7 @@ namespace NuGet
 
                     Marker.AddDependent(package, resolvedDependency);
 
-                    if (!OnAfterResolveDependency(package, resolvedDependency))
+                    if (!OnAfterResolveDependency(package, dependency, resolvedDependency))
                     {
                         continue;
                     }
@@ -219,7 +219,7 @@ namespace NuGet
             }
         }
 
-        protected virtual bool OnAfterResolveDependency(IPackage package, IPackage dependency)
+        protected virtual bool OnAfterResolveDependency(IPackage package, PackageDependency packageDependency, IPackage dependency)
         {
             return true;
         }

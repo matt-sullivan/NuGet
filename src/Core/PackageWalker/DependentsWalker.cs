@@ -57,20 +57,20 @@ namespace NuGet
             return Repository.ResolveDependency(dependency, allowPrereleaseVersions: true, preferListedPackages: false);
         }
 
-        protected override bool OnAfterResolveDependency(IPackage package, IPackage dependency)
+        protected override bool OnAfterResolveDependency(IPackage package, PackageDependency packageDependency, IPackage resolvedPackage)
         {
             Debug.Assert(DependentsLookup != null);
 
             HashSet<IPackage> values;
-            if (!DependentsLookup.TryGetValue(dependency, out values))
+            if (!DependentsLookup.TryGetValue(resolvedPackage, out values))
             {
                 values = new HashSet<IPackage>(PackageEqualityComparer.IdAndVersion);
-                DependentsLookup[dependency] = values;
+                DependentsLookup[resolvedPackage] = values;
             }
 
             // Add the current package to the list of dependents
             values.Add(package);
-            return base.OnAfterResolveDependency(package, dependency);
+            return base.OnAfterResolveDependency(package, packageDependency, resolvedPackage);
         }
 
         public IEnumerable<IPackage> GetDependents(IPackage package)

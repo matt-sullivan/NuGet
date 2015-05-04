@@ -134,7 +134,7 @@ namespace NuGet
             }
         }
 
-        protected override bool OnAfterResolveDependency(IPackage package, IPackage dependency)
+        protected override bool OnAfterResolveDependency(IPackage package, PackageDependency packageDependency, IPackage dependency)
         {
             if (!Force)
             {
